@@ -5,6 +5,9 @@ use tauri::{
     Emitter, Manager,
 };
 
+#[cfg(target_os = "linux")]
+use gtk::prelude::GtkWindowExt;
+
 /// Returns the logical screen size (width, height) for the monitor the window is on.
 #[tauri::command]
 async fn get_screen_size(window: tauri::Window) -> Result<(f64, f64), String> {
@@ -30,6 +33,17 @@ pub fn run() {
             // Force webview background to fully transparent (important for Wayland/Hyprland)
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_background_color(Some(Color(0, 0, 0, 0)));
+
+                // On Linux, set the GTK window type hint so compositors
+                // don't apply blur, shadows, or rounded corners to this window.
+                #[cfg(target_os = "linux")]
+                {
+                    let gtk_window = window.gtk_window().map_err(|e| e.to_string())?;
+                    gtk_window.set_type_hint(gdk::WindowTypeHint::Utility);
+                    // Also tell the window to not accept focus by default
+                    // (pet windows shouldn't steal focus from other apps)
+                    gtk_window.set_accept_focus(false);
+                }
             }
 
             // Build tray icon (uses default app icon)

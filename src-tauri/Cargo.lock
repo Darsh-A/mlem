@@ -1695,6 +1695,8 @@ dependencies = [
 name = "mlem"
 version = "0.1.0"
 dependencies = [
+ "gdk",
+ "gtk",
  "serde",
  "serde_json",
  "tauri",

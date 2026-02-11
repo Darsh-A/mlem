@@ -13,6 +13,11 @@
 #
 set -euo pipefail
 
+# Source Rust/Cargo environment if available
+if [ -f "$HOME/.cargo/env" ]; then
+    . "$HOME/.cargo/env"
+fi
+
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$PROJECT_ROOT"
 
@@ -24,6 +29,15 @@ echo "=========================================="
 build_local() {
     echo ""
     echo "[1/5] Checking prerequisites..."
+
+    # Ensure rustup is available (needed for cross-compilation targets)
+    if ! command -v rustup &>/dev/null; then
+        echo "  -> rustup not found. It's required for cross-compilation targets."
+        echo "  -> You have system Rust ($(cargo --version 2>/dev/null || echo 'unknown'))."
+        echo "  -> Installing rustup (will manage alongside system Rust)..."
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+        . "$HOME/.cargo/env"
+    fi
 
     # Ensure Rust Windows target is installed
     if ! rustup target list --installed | grep -q "x86_64-pc-windows-msvc"; then
@@ -46,8 +60,18 @@ build_local() {
         echo "  -> NSIS not found. Installing..."
         if command -v apt &>/dev/null; then
             sudo apt install -y nsis
+        elif command -v yay &>/dev/null; then
+            yay -S --noconfirm nsis
+        elif command -v paru &>/dev/null; then
+            paru -S --noconfirm nsis
         elif command -v pacman &>/dev/null; then
-            sudo pacman -S --noconfirm nsis
+            echo "  -> NSIS is in the AUR. Installing with makepkg..."
+            NSIS_TMP="$(mktemp -d)"
+            git clone https://aur.archlinux.org/nsis.git "$NSIS_TMP/nsis"
+            cd "$NSIS_TMP/nsis"
+            makepkg -si --noconfirm
+            cd "$PROJECT_ROOT"
+            rm -rf "$NSIS_TMP"
         elif command -v dnf &>/dev/null; then
             sudo dnf install -y nsis
         else

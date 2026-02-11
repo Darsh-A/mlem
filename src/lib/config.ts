@@ -80,7 +80,6 @@ export const CONFIG = {
     sitting: "petha_sit",
     sleeping: "petha_sleep",
     petted: "petha_sit", // placeholder until petha_petted is created
-    // Use the dedicated drag sprite sheet (petha_dra.png / petha_dra.json)
-    dragged: "petha_dra",
+    dragged: "petha_drag",
   } as Record<string, string>,
 };

@@ -41,12 +41,19 @@
   // Sleep/wake indicator state
   let showZzz = $state(false);
   let showExclamation = $state(false);
+  let showQuestion = $state(false);
   let prevState: CatState = "idle";
 
   // Drag detection state
   let mouseDownTime = 0;
   let mouseDownPos = { x: 0, y: 0 };
   let isDragging = false;
+
+  // Manual drag state (replaces startDragging which is unreliable on Wayland/Hyprland)
+  let dragWindowStartX = 0;
+  let dragWindowStartY = 0;
+  let dragMouseStartX = 0;
+  let dragMouseStartY = 0;
 
   // Track last window position to avoid unnecessary IPC calls
   let lastSetPos = { x: -1, y: -1 };
@@ -166,6 +173,8 @@
     if (animFrameId) cancelAnimationFrame(animFrameId);
     if (unlistenReset) unlistenReset();
     if (bubbleTimer) clearTimeout(bubbleTimer);
+    window.removeEventListener("mousemove", handleGlobalDragMove);
+    window.removeEventListener("mouseup", handleGlobalDragEnd);
   });
 
   /** Called when the state machine transitions to a new state. */
@@ -185,6 +194,13 @@
       setTimeout(() => {
         showExclamation = false;
       }, 1000);
+    }
+
+    // Drag question mark
+    if (state === "dragged") {
+      showQuestion = true;
+    } else {
+      showQuestion = false;
     }
 
     prevState = state;
@@ -300,8 +316,22 @@
 
   async function handleMouseMove(e: MouseEvent) {
     if (!ready) return;
-    // Only start drag if left button is held and we haven't started yet
-    if (e.buttons !== 1 || isDragging || mouseDownTime === 0) return;
+    if (e.buttons !== 1 || mouseDownTime === 0) return;
+
+    if (isDragging) {
+      // Already dragging — move the window to follow the mouse.
+      // screenX/Y give us the cursor position in screen coordinates.
+      const newX = e.screenX - dragMouseStartX + dragWindowStartX;
+      const newY = e.screenY - dragMouseStartY + dragWindowStartY;
+      const rx = Math.round(newX);
+      const ry = Math.round(newY);
+
+      if (rx !== lastSetPos.x || ry !== lastSetPos.y) {
+        lastSetPos = { x: rx, y: ry };
+        appWindow.setPosition(new LogicalPosition(rx, ry));
+      }
+      return;
+    }
 
     const dx = e.clientX - mouseDownPos.x;
     const dy = e.clientY - mouseDownPos.y;
@@ -311,17 +341,51 @@
       isDragging = true;
       stateMachine.forceState("dragged");
 
+      // Record the starting positions for manual drag
       try {
-        await appWindow.startDragging();
+        const pos = await appWindow.outerPosition();
+        const monitor = await getMonitor();
+        const scale = monitor?.scaleFactor ?? 1;
+        dragWindowStartX = pos.x / scale;
+        dragWindowStartY = pos.y / scale;
       } catch {
-        /* platform may not support startDragging */
+        dragWindowStartX = lastSetPos.x;
+        dragWindowStartY = lastSetPos.y;
       }
+      dragMouseStartX = e.screenX;
+      dragMouseStartY = e.screenY;
 
-      // Drag ended — sync the window position back to movement engine
-      await syncPositionAfterDrag();
-      stateMachine.forceState("idle");
-      isDragging = false;
+      // Register global listeners so dragging continues even if cursor leaves the window
+      window.addEventListener("mousemove", handleGlobalDragMove);
+      window.addEventListener("mouseup", handleGlobalDragEnd);
     }
+  }
+
+  function handleGlobalDragMove(e: MouseEvent) {
+    if (!isDragging) return;
+    const newX = e.screenX - dragMouseStartX + dragWindowStartX;
+    const newY = e.screenY - dragMouseStartY + dragWindowStartY;
+    const rx = Math.round(newX);
+    const ry = Math.round(newY);
+
+    if (rx !== lastSetPos.x || ry !== lastSetPos.y) {
+      lastSetPos = { x: rx, y: ry };
+      appWindow.setPosition(new LogicalPosition(rx, ry));
+    }
+  }
+
+  function handleGlobalDragEnd(_e: MouseEvent) {
+    window.removeEventListener("mousemove", handleGlobalDragMove);
+    window.removeEventListener("mouseup", handleGlobalDragEnd);
+    finishDrag();
+  }
+
+  function finishDrag() {
+    if (!isDragging) return;
+    syncPositionAfterDrag();
+    stateMachine.forceState("idle");
+    isDragging = false;
+    mouseDownTime = 0;
   }
 
   function handleMouseUp(e: MouseEvent) {
@@ -332,11 +396,8 @@
         petCat();
       }
     }
-    // If drag happened but mouseup still fires, clean up
     if (isDragging) {
-      syncPositionAfterDrag();
-      stateMachine.forceState("idle");
-      isDragging = false;
+      finishDrag();
     }
     mouseDownTime = 0;
   }
@@ -464,6 +525,12 @@
     </div>
   {/if}
 
+  {#if showQuestion}
+    <div class="question-container" style="bottom: {canvasHeight / 2 + 64 * (userScale / 3)}px;">
+      <span class="question" style="font-size: {16 * (userScale / 3)}px;">?</span>
+    </div>
+  {/if}
+
   <canvas
     bind:this={canvas}
     width={canvasWidth}
@@ -548,6 +615,46 @@
     100% {
       opacity: 0;
       transform: translate(8px, -18px) rotate(-25deg);
+    }
+  }
+
+  /* ── Drag question mark ── */
+  .question-container {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  .question {
+    font-family: 'PressStart2P', monospace;
+    font-size: 16px;
+    color: #f39c12;
+    animation: question-bob 1.2s ease-in-out infinite;
+  }
+
+  @keyframes question-bob {
+    0% {
+      opacity: 0;
+      transform: scale(0.3) translateY(10px);
+    }
+    15% {
+      opacity: 1;
+      transform: scale(1.2) translateY(-2px);
+    }
+    30% {
+      transform: scale(1) translateY(0);
+    }
+    50% {
+      transform: scale(1) translateY(-4px);
+    }
+    70% {
+      transform: scale(1) translateY(0);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1) translateY(-4px);
     }
   }
 

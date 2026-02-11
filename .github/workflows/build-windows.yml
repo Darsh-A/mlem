@@ -6,6 +6,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -40,6 +43,12 @@ jobs:
           releaseBody: 'Desktop cat pet for Windows'
           releaseDraft: true
           prerelease: false
+        # Release creation only runs on tag pushes
+        if: startsWith(github.ref, 'refs/tags/')
+
+      - name: Build Tauri app (no release)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        run: npx tauri build
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4

@@ -44,6 +44,12 @@
   let showQuestion = $state(false);
   let prevState: CatState = "idle";
 
+  // Audio
+  function playSound(src: string) {
+    const audio = new Audio(src);
+    audio.play().catch(() => {});
+  }
+
   // Drag detection state
   let mouseDownTime = 0;
   let mouseDownPos = { x: 0, y: 0 };
@@ -94,11 +100,13 @@
       // Load sprite sheets (or placeholders)
       spriteManager = new SpriteManager();
       await spriteManager.loadAll();
-      // Get screen dimensions (currentMonitor is a standalone function in Tauri v2)
-      const monitor = await getMonitor();
-      const scaleFactor = monitor?.scaleFactor ?? 1;
-      const screenWidth = (monitor?.size.width ?? 1920) / scaleFactor;
-      const screenHeight = (monitor?.size.height ?? 1080) / scaleFactor;
+
+      // Get usable screen area (excludes taskbar on Windows)
+      const invokeModule = await import("@tauri-apps/api/core");
+      const [_wx, _wy, workWidth, workHeight] =
+        await invokeModule.invoke<[number, number, number, number]>("get_work_area");
+      const screenWidth = workWidth;
+      const screenHeight = workHeight;
 
       // Initialize movement engine
       movement = new MovementEngine(
@@ -188,8 +196,9 @@
       showZzz = false;
     }
 
-    // Wake-up exclamation (only when leaving sleep)
-    if (prevState === "sleeping" && state !== "sleeping") {
+    // Wake-up exclamation (only when leaving sleep, but not when dragged)
+    if (prevState === "sleeping" && state !== "sleeping" && state !== "dragged") {
+      playSound('/audio/meow_short.wav');
       showExclamation = true;
       setTimeout(() => {
         showExclamation = false;
@@ -224,7 +233,9 @@
     const dw = frame.sw * scale;
     const dh = frame.sh * scale;
     const dx = (canvas.width - dw) / 2;
-    const dy = (canvas.height - dh) / 2;
+    // Align the cat sprite to the bottom of the canvas so its feet
+    // sit flush with the window's bottom edge (= just above the taskbar).
+    const dy = canvas.height - dh;
 
     ctx.save();
     if (frame.flipX) {
@@ -339,6 +350,7 @@
     // Start drag if mouse moved more than 5px
     if (Math.sqrt(dx * dx + dy * dy) > 5) {
       isDragging = true;
+      playSound('/audio/meow_confused.wav');
       stateMachine.forceState("dragged");
 
       // Record the starting positions for manual drag
@@ -512,22 +524,22 @@
   {/if}
 
   {#if showZzz}
-    <div class="zzz-container" style="bottom: {canvasHeight / 2 + 16 * (userScale / 3)}px; right: {canvasWidth / 2 - 20 * (userScale / 3)}px;">
-      <span class="zzz z1" style="font-size: {8 * (userScale / 3)}px;">z</span>
-      <span class="zzz z2" style="font-size: {11 * (userScale / 3)}px; bottom: {14 * (userScale / 3)}px; right: {-10 * (userScale / 3)}px;">z</span>
-      <span class="zzz z3" style="font-size: {14 * (userScale / 3)}px; bottom: {30 * (userScale / 3)}px; right: {-22 * (userScale / 3)}px;">z</span>
+    <div class="zzz-container" style="bottom: {CONFIG.sprite.defaultSize * userScale + 8}px; right: {canvasWidth / 2 - 20}px;">
+      <span class="zzz z1" style="font-size: 8px;">z</span>
+      <span class="zzz z2" style="font-size: 11px; bottom: 14px; right: -10px;">z</span>
+      <span class="zzz z3" style="font-size: 14px; bottom: 30px; right: -22px;">z</span>
     </div>
   {/if}
 
   {#if showExclamation}
-    <div class="exclamation-container" style="bottom: {canvasHeight / 2 + 64 * (userScale / 3)}px;">
-      <span class="exclamation" style="font-size: {16 * (userScale / 3)}px;">!</span>
+    <div class="exclamation-container" style="bottom: {CONFIG.sprite.defaultSize * userScale + 24}px;">
+      <span class="exclamation">!</span>
     </div>
   {/if}
 
   {#if showQuestion}
-    <div class="question-container" style="bottom: {canvasHeight / 2 + 64 * (userScale / 3)}px;">
-      <span class="question" style="font-size: {16 * (userScale / 3)}px;">?</span>
+    <div class="question-container" style="bottom: {CONFIG.sprite.defaultSize * userScale + 24}px;">
+      <span class="question">?</span>
     </div>
   {/if}
 

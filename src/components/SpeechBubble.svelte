@@ -6,11 +6,17 @@
     scale = 3,
     canvasHeight = CONFIG.window.height,
   }: { text: string; scale?: number; canvasHeight?: number } = $props();
+
+  // The cat sprite is bottom-aligned in the canvas.
+  // Its top edge is (defaultSize * scale) px from the bottom.
+  // Place the bubble a fixed 8px above the cat, independent of scale.
+  const gap = 8;
+  let bottomOffset = $derived(CONFIG.sprite.defaultSize * scale + gap);
 </script>
 
 <div
   class="speech-bubble"
-  style="bottom: {(canvasHeight + CONFIG.sprite.defaultSize * scale) / 2 + 8 * (scale / 3)}px;"
+  style="bottom: {bottomOffset}px;"
 >
   <span>{text}</span>
 </div>

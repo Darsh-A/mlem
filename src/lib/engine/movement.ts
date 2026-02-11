@@ -35,10 +35,9 @@ export class MovementEngine {
   private getAnchorPosition(): Position {
     const anchor = CONFIG.position.defaultAnchor;
     const margin = CONFIG.position.edgeMargin;
-    const y =
-      this.screenHeight -
-      this.windowHeight -
-      CONFIG.movement.taskbarOffset;
+    // screenHeight is the work-area height (already excludes taskbar on Windows),
+    // so we just place the window flush with the bottom of the work area.
+    const y = this.screenHeight - this.windowHeight;
 
     let x: number;
     switch (anchor) {
@@ -103,8 +102,7 @@ export class MovementEngine {
   updateScreenBounds(width: number, height: number): void {
     this.screenWidth = width;
     this.screenHeight = height;
-    this._position.y =
-      height - this.windowHeight - CONFIG.movement.taskbarOffset;
+    this._position.y = height - this.windowHeight;
     this._position.x = Math.max(
       0,
       Math.min(this._position.x, width - this.windowWidth),

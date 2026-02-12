@@ -10,7 +10,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "msi"],
+    "targets": "all",
     "windows": {
       "nsis": {
         "installMode": "currentUser",
